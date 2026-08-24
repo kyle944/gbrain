@@ -601,6 +601,37 @@ export function resolveCodeIntelScope(
 }
 
 /**
+ * Re-route an unqualified graph query from a code-less seed source to the
+ * sole code-bearing source in a local federated read set. Explicit scope wins,
+ * ambiguous matches fail closed, and granted clients are never widened.
+ */
+export async function routeCodeIntelScope(
+  ctx: OperationContext,
+  sourceIdParam: string | undefined,
+  allSourcesParam = false,
+): Promise<{ allSources: boolean; sourceId?: string }> {
+  const scope = resolveCodeIntelScope(ctx, sourceIdParam, allSourcesParam);
+  if (
+    sourceIdParam !== undefined || allSourcesParam ||
+    scope.allSources || scope.sourceId === undefined ||
+    !ctx.localFederatedSourceIds || ctx.localFederatedSourceIds.length < 2
+  ) {
+    return scope;
+  }
+  try {
+    const { codeChunksExist } = await import('../code-graph-readiness.ts');
+    if (await codeChunksExist(ctx.engine, scope.sourceId)) return scope;
+    const withCode: string[] = [];
+    for (const id of ctx.localFederatedSourceIds) {
+      if (id === scope.sourceId) continue;
+      if (await codeChunksExist(ctx.engine, id)) withCode.push(id);
+    }
+    if (withCode.length === 1) return { allSources: false, sourceId: withCode[0] };
+  } catch { /* probe failure: retain the original scope */ }
+  return scope;
+}
+
+/**
  * T4/D5 — resolve a per-call search-mode override. Honored ONLY for trusted/
  * local callers (ctx.remote === false) so a remote OAuth client can't escalate
  * to the costly tokenmax bundle. Local + unknown mode → loud reject; remote +

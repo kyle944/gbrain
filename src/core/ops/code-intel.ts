@@ -9,7 +9,7 @@
  */
 
 import type { Operation } from './contract.ts';
-import { resolveCodeIntelScope } from './context.ts';
+import { routeCodeIntelScope } from './context.ts';
 import {
   CODE_CALLERS_DESCRIPTION,
   CODE_CALLEES_DESCRIPTION,
@@ -47,7 +47,7 @@ const code_callers: Operation = {
     const sourceIdParam = typeof p.source_id === 'string' ? p.source_id : undefined;
     // Single trust+grant resolver: remote callers can't span sources outside
     // their grant, and `__all__` collapses to their grant (not the whole brain).
-    const { allSources, sourceId } = resolveCodeIntelScope(ctx, sourceIdParam, p.all_sources === true);
+    const { allSources, sourceId } = await routeCodeIntelScope(ctx, sourceIdParam, p.all_sources === true);
     const edges = await ctx.engine.getCallersOf(symbol, {
       limit,
       allSources,
@@ -84,7 +84,7 @@ const code_callees: Operation = {
     const limit = (p.limit as number) ?? 100;
     const sourceIdParam = typeof p.source_id === 'string' ? p.source_id : undefined;
     // Single trust+grant resolver (see code_callers).
-    const { allSources, sourceId } = resolveCodeIntelScope(ctx, sourceIdParam, p.all_sources === true);
+    const { allSources, sourceId } = await routeCodeIntelScope(ctx, sourceIdParam, p.all_sources === true);
     const edges = await ctx.engine.getCalleesOf(symbol, {
       limit,
       allSources,
@@ -175,7 +175,7 @@ const code_blast: Operation = {
     // source outside its grant (pre-fix this scoped by bare ctx.sourceId only).
     // Falls back to ctx.sourceId (a required string) for the trusted-local case,
     // exactly preserving pre-fix local behavior.
-    const { sourceId: scopedSourceId } = resolveCodeIntelScope(ctx, typeof p.source_id === 'string' ? p.source_id : undefined);
+    const { sourceId: scopedSourceId } = await routeCodeIntelScope(ctx, typeof p.source_id === 'string' ? p.source_id : undefined);
     const sourceId = scopedSourceId ?? ctx.sourceId;
     return getCachedOrCompute(
       ctx.engine,
@@ -211,7 +211,7 @@ const code_flow: Operation = {
     const max_nodes = Math.min((p.max_nodes as number) ?? 200, 200);
     const exact = (p.exact as boolean) ?? false;
     // Single trust+grant resolver (see code_blast).
-    const { sourceId: scopedSourceId } = resolveCodeIntelScope(ctx, typeof p.source_id === 'string' ? p.source_id : undefined);
+    const { sourceId: scopedSourceId } = await routeCodeIntelScope(ctx, typeof p.source_id === 'string' ? p.source_id : undefined);
     const sourceId = scopedSourceId ?? ctx.sourceId;
     return getCachedOrCompute(
       ctx.engine,

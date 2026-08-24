@@ -43,6 +43,7 @@ export {
   resolveRequestedScope,
   federatedSearchScope,
   resolveCodeIntelScope,
+  routeCodeIntelScope,
   resolvePerCallMode,
 } from './ops/context.ts';
 

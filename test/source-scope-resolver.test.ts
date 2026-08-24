@@ -12,6 +12,7 @@ import { describe, test, expect } from 'bun:test';
 import {
   resolveRequestedScope,
   resolveCodeIntelScope,
+  routeCodeIntelScope,
   thinkSourceScopeOpts,
   OperationError,
   type OperationContext,
@@ -134,5 +135,71 @@ describe('resolveCodeIntelScope — single-source code traversal', () => {
   test('remote with no source in scope is denied, never widened to all', () => {
     const ctx = ctxOf({ remote: true, sourceId: '' });
     expect(() => resolveCodeIntelScope(ctx, '__all__')).toThrow(OperationError);
+  });
+});
+
+describe('routeCodeIntelScope — federated code-source re-route', () => {
+  function engineWithCodeIn(...sourcesWithCode: string[]) {
+    return {
+      executeRaw: async (_sql: string, params: unknown[] = []) => {
+        const sourceId = params[params.length - 1] as string | undefined;
+        return [{ e: sourceId !== undefined && sourcesWithCode.includes(sourceId) }];
+      },
+    } as any;
+  }
+
+  test('unqualified query re-routes to the sole code-bearing federated source', async () => {
+    const ctx = ctxOf({
+      remote: true,
+      sourceId: 'default',
+      engine: engineWithCodeIn('code-src'),
+      localFederatedSourceIds: ['default', 'code-src'],
+    });
+    expect(await routeCodeIntelScope(ctx, undefined)).toEqual({ allSources: false, sourceId: 'code-src' });
+  });
+
+  test('does not re-route when the seed source has code', async () => {
+    const ctx = ctxOf({
+      remote: true,
+      sourceId: 'default',
+      engine: engineWithCodeIn('default', 'code-src'),
+      localFederatedSourceIds: ['default', 'code-src'],
+    });
+    expect(await routeCodeIntelScope(ctx, undefined)).toEqual({ allSources: false, sourceId: 'default' });
+  });
+
+  test('explicit source_id always wins', async () => {
+    const ctx = ctxOf({
+      remote: true,
+      sourceId: 'default',
+      engine: engineWithCodeIn('code-src'),
+      localFederatedSourceIds: ['default', 'code-src'],
+    });
+    expect(await routeCodeIntelScope(ctx, 'default')).toEqual({ allSources: false, sourceId: 'default' });
+  });
+
+  test('ambiguous code-bearing sources retain the original scope', async () => {
+    const ctx = ctxOf({
+      remote: true,
+      sourceId: 'default',
+      engine: engineWithCodeIn('code-a', 'code-b'),
+      localFederatedSourceIds: ['default', 'code-a', 'code-b'],
+    });
+    expect(await routeCodeIntelScope(ctx, undefined)).toEqual({ allSources: false, sourceId: 'default' });
+  });
+
+  test('a client without a federated read set is never widened', async () => {
+    const ctx = ctxOf({ remote: true, sourceId: 'default', engine: engineWithCodeIn('code-src') });
+    expect(await routeCodeIntelScope(ctx, undefined)).toEqual({ allSources: false, sourceId: 'default' });
+  });
+
+  test('probe failure retains the original scope', async () => {
+    const ctx = ctxOf({
+      remote: true,
+      sourceId: 'default',
+      engine: { executeRaw: async () => { throw new Error('db down'); } } as any,
+      localFederatedSourceIds: ['default', 'code-src'],
+    });
+    expect(await routeCodeIntelScope(ctx, undefined)).toEqual({ allSources: false, sourceId: 'default' });
   });
 });
