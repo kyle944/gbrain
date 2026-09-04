@@ -5584,6 +5584,19 @@ export class PostgresEngine implements BrainEngine {
   }
 
   // Ingest log
+  async refreshPlannerStatistics(): Promise<void> {
+    // See the BrainEngine doc for why this is not optional on PGLite.
+    // Best-effort: a brain that cannot ANALYZE should still serve queries,
+    // just with the plans it already had.
+    try {
+      await this.sql.unsafe('ANALYZE');
+    } catch (e) {
+      if (process.env.GBRAIN_DEBUG === '1') {
+        console.error('[gbrain] ANALYZE failed: ' + (e as Error).message);
+      }
+    }
+  }
+
   async logIngest(entry: IngestLogInput): Promise<void> {
     const sql = this.sql;
     // v0.31.2 (codex P1 #3): source_id threaded so multi-source brains can
