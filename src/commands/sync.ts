@@ -2523,6 +2523,15 @@ async function performSyncInner(engine: BrainEngine, opts: SyncOpts): Promise<Sy
     });
   }
 
+  // A sync that wrote pages or chunks has moved the table statistics the query
+  // planner relies on, and on PGLite nothing else will ever refresh them (no
+  // background workers, so autoanalyze never runs). Without this the keyword
+  // arm plans against `rows=1` estimates and rescans the GIN index thousands of
+  // times per query. ~1s on a 25k-chunk brain. See BrainEngine.refreshPlannerStatistics.
+  if (pagesAffected.length > 0 || chunksCreated > 0) {
+    await engine.refreshPlannerStatistics?.();
+  }
+
   // Auto-extract links + timeline (cheap CPU, but skip-inline for LARGE syncs).
   // Thread opts.sourceId so the extract phase reconciles edges + timeline
   // entries against the right source — pre-fix (Data R1 HIGH 1) this phase

@@ -2146,6 +2146,27 @@ export interface BrainEngine {
 
   // Ingest log
   logIngest(entry: IngestLogInput): Promise<void>;
+
+  /**
+   * Refresh the query planner's table statistics (`ANALYZE`).
+   *
+   * PGLite runs Postgres as a single in-process WASM instance with no
+   * background workers, so the autovacuum launcher that would normally keep
+   * `pg_statistic` current NEVER runs. A PGLite brain therefore plans every
+   * query with zero statistics for its whole life unless something calls this.
+   *
+   * That is not a small penalty. On a 4,072-page / 25,006-chunk brain the
+   * keyword arm's planner estimated `rows=1` for the chunk scan, chose a nested
+   * loop with `pages` on the outside, and re-scanned the `search_vector` GIN
+   * index 3,384 times for one query — 994,607 buffer hits and 2.3s for work
+   * that takes 3ms with the index scanned once. Search p50 was 23s. One
+   * `ANALYZE` (953ms for the whole database) took hybrid search from
+   * 3,431-5,781ms to 231-431ms.
+   *
+   * Call it after bulk writes. Cheap, idempotent, and safe to run concurrently
+   * with reads: ANALYZE takes only a SHARE UPDATE EXCLUSIVE lock.
+   */
+  refreshPlannerStatistics?(): Promise<void>;
   /**
    * `opts.sourceIds` scopes the log to those sources (federated read grant /
    * remote caller scope). Omitted → whole brain (trusted local callers).
