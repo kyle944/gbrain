@@ -555,6 +555,12 @@ export async function runReindexCodeCli(engine: BrainEngine, args: string[]): Pr
   }
 
   const result = await runReindexCode(engine, { sourceId, yes, json, force, noEmbed, maxCostUsd, workers });
+  // Re-chunking rewrites content_chunks wholesale, so the planner's statistics
+  // are stale the moment it finishes. PGLite never autoanalyzes; see
+  // BrainEngine.refreshPlannerStatistics.
+  if (result.reindexed > 0) {
+    await engine.refreshPlannerStatistics?.();
+  }
   if (json) {
     console.log(JSON.stringify(result));
   } else {
