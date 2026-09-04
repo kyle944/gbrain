@@ -1805,6 +1805,14 @@ async function embedAllStale(
 
   if (!staleOpts?.quiet) slog(`Embedded ${result.embedded} chunks across ${totalProcessedPages} pages`);
 
+  // Writing embeddings moves the statistics the planner uses for the vector and
+  // keyword arms, and on PGLite nothing else ever refreshes them (no background
+  // workers, so autoanalyze never runs). Skip when the sweep wrote nothing.
+  // See BrainEngine.refreshPlannerStatistics.
+  if (result.embedded > 0) {
+    await engine.refreshPlannerStatistics?.();
+  }
+
   // #1946 (OV2a): a catch-up pass that completed without being aborted but left
   // chunks unembedded means those chunks are stuck (a non-transient embed
   // failure), not that we ran out of time. Surface it loudly so it doesn't read
